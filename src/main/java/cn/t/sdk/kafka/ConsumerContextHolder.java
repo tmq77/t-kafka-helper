@@ -119,7 +119,7 @@ public class ConsumerContextHolder {
 
                 List<MessageDto> messageList = new ArrayList<>();
                 for (ConsumerRecord<String, String> msgRecord : records) {
-                    messageList.add(new MessageDto(msgRecord.key(), msgRecord.value()));
+                    messageList.add(new MessageDto(msgRecord.key(), msgRecord.value(), msgRecord.topic(), msgRecord.offset(), msgRecord.headers()));
                 }
                 try {
                     // 批量消费

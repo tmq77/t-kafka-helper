@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.apache.kafka.common.header.Headers;
 
 /**
  * 消息
@@ -19,5 +20,7 @@ public class MessageDto {
     private String messageId;
     // 消息
     private String message;
-
+    private String topic;
+    private long offset;
+    private Headers headers;
 }
