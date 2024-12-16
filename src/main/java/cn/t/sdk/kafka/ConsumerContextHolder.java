@@ -50,6 +50,16 @@ public class ConsumerContextHolder {
     }
 
     /**
+     * 创建一个单一kafka集群的消费者持有者 - 一个holder就一个消费者
+     * @param servers kafka集群地址,逗号分隔
+     * @param groupId 消费者组id
+     */
+    public ConsumerContextHolder(String servers, String groupId, String username, String password,java.util.function.Consumer<List<MessageDto>> bizConsumer) {
+        this.consumer = new KafkaDynamicTopicConsumerFactory(servers, groupId, username, password).buildNewConsumer();
+        this.bizConsumer = bizConsumer;
+    }
+
+    /**
      * 创建消费者并订阅主题
      * @param topics 主题列表
      */

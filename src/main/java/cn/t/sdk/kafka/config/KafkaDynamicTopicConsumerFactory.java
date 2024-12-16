@@ -6,8 +6,8 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
+import java.util.Objects;
 import java.util.Properties;
-import java.util.Set;
 
 
 /**
@@ -22,6 +22,9 @@ public class KafkaDynamicTopicConsumerFactory {
     // kafka服务器地址,逗号分隔
     private final String servers;
 
+    private String saslUsername;
+    private String saslPassword;
+
     /**
      * 指定服务地址和消费者组
      * @param servers 服务地址 localhost:9092  多个则逗号分隔
@@ -30,6 +33,18 @@ public class KafkaDynamicTopicConsumerFactory {
     public KafkaDynamicTopicConsumerFactory(String servers, String groupId) {
         this.servers = servers;
         this.groupId = groupId;
+    }
+
+    /**
+     * 指定服务地址和消费者组
+     * @param servers 服务地址 localhost:9092  多个则逗号分隔
+     * @param groupId 消费者组id
+     */
+    public KafkaDynamicTopicConsumerFactory(String servers, String groupId, String saslUsername, String saslPassword) {
+        this.servers = servers;
+        this.groupId = groupId;
+        this.saslUsername = saslUsername;
+        this.saslPassword = saslPassword;
     }
 
     /**
@@ -53,6 +68,16 @@ public class KafkaDynamicTopicConsumerFactory {
         // earliest 从最开始的位置开始消费
         // latest 从最新的位置开始消费
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.LATEST.toString().toLowerCase());
+
+        if (Objects.nonNull(this.saslUsername) && !this.saslUsername.isBlank() && Objects.nonNull(this.saslPassword) && !this.saslPassword.isBlank()) {
+            // 配置 SASL/PLAIN 认证
+            props.put("security.protocol", "SASL_PLAINTEXT"); // 或者 SASL_SSL 根据你的 Kafka 配置
+            props.put("sasl.mechanism", "PLAIN");
+            props.put("sasl.jaas.config", "org.apache.kafka.common.security.plain.PlainLoginModule required "
+                    + "username=\"" + this.saslUsername + "\" "
+                    + "password=\"" + this.saslPassword + "\";");
+        }
+
         return props;
     }
 
