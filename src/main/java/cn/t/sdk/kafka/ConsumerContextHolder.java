@@ -99,6 +99,12 @@ public class ConsumerContextHolder {
             // 取消订阅 - 消费者线程不安全,需要在同一线程中取消
             this.consumer.unsubscribe();
             this.running = false;
+            // 在这里延时一下,避免线程未完全停止就创建新的线程导致异常
+            try {
+                TimeUnit.SECONDS.sleep(5);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             return true;
         }, this.sdkThreadPool.getPool());
     }
