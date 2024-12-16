@@ -16,8 +16,19 @@ public class ProducerContextHolder {
 
     private final Producer<String, String> producer;
 
+    private String saslUsername;
+    private String saslPassword;
+
+
+
     public ProducerContextHolder(String servers) {
         this.producer = new KafkaProducerFactory(servers).buildNewProducer();
+    }
+
+    public ProducerContextHolder(String servers, String saslUsername, String saslPassword) {
+        this.producer = new KafkaProducerFactory(servers, saslUsername, saslPassword).buildNewProducer();
+        this.saslUsername = saslUsername;
+        this.saslPassword = saslPassword;
     }
 
     /**

@@ -4,6 +4,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
+import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
 import java.util.Objects;
@@ -67,15 +68,24 @@ public class KafkaDynamicTopicConsumerFactory {
         props.put(ConsumerConfig.GROUP_ID_CONFIG, this.groupId);
         // earliest 从最开始的位置开始消费
         // latest 从最新的位置开始消费
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.LATEST.toString().toLowerCase());
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.toString().toLowerCase());
 
         if (Objects.nonNull(this.saslUsername) && !this.saslUsername.isBlank() && Objects.nonNull(this.saslPassword) && !this.saslPassword.isBlank()) {
             // 配置 SASL/PLAIN 认证
+            // props.put("security.protocol", "SASL_SSL"); // 使用SASL_SSL需要指定证书
             props.put("security.protocol", "SASL_PLAINTEXT"); // 或者 SASL_SSL 根据你的 Kafka 配置
-            props.put("sasl.mechanism", "PLAIN");
-            props.put("sasl.jaas.config", "org.apache.kafka.common.security.plain.PlainLoginModule required "
-                    + "username=\"" + this.saslUsername + "\" "
-                    + "password=\"" + this.saslPassword + "\";");
+
+            // 下面的配置使用SASL_SSL需要使用
+            // 关闭https校验,默认会打开
+            // props.put("ssl.endpoint.identification.algorithm", "");
+            // 配置一个认证主题名称,sasl一般使用kafka即可，有自定义认证的可以配置对应域名
+            // props.put("sasl.kerberos.service.name", "kafka");
+            // props.put("ssl.truststore.location", "E:/kafka.truststore.jks");
+            // props.put("ssl.truststore.password", "certificatePassword123");
+
+            // 下面的配置 两个协议通用
+            props.put(SaslConfigs.SASL_MECHANISM, "PLAIN");
+            props.put(SaslConfigs.SASL_JAAS_CONFIG, "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"" + this.saslUsername + "\" password=\"" + this.saslPassword + "\";");
         }
 
         return props;

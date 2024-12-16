@@ -153,9 +153,9 @@ public class ConsumerContextHolder {
 
 
     public static void main(String[] args) {
-        ProducerContextHolder producer = new ProducerContextHolder("10.10.44.176:9094");
-        producer.sendMessage("aaa", "hahahaa", "test");
-        ConsumerContextHolder consumerContextHolder = new ConsumerContextHolder("10.10.44.176:9094", "test-ipaas", msg -> {
+        ProducerContextHolder producer = new ProducerContextHolder("10.10.44.176:9094", "root", "root");
+        producer.sendMessage("aaa", "hahaha11a", "test");
+        ConsumerContextHolder consumerContextHolder = new ConsumerContextHolder("10.10.44.176:9094", "test-ipaas1","root", "root", msg -> {
             System.out.println(msg);
         });
         consumerContextHolder.subscribe(Set.of("test"));
