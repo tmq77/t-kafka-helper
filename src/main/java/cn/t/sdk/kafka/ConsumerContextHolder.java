@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 /**
@@ -37,6 +38,8 @@ public class ConsumerContextHolder {
 
     private Set<String> topics;
 
+    private final ReentrantLock lock = new ReentrantLock();
+
     /**
      * 创建一个单一kafka集群的消费者持有者 - 一个holder就一个消费者
      * @param servers kafka集群地址,逗号分隔
@@ -58,28 +61,36 @@ public class ConsumerContextHolder {
     }
 
     /**
-     * 创建消费者并订阅主题
+     * 创建消费者并订阅主题 - 不允许并发
      * @param topics 主题列表
      */
-    public synchronized void subscribe(Set<String> topics) {
+    public void subscribe(Set<String> topics) {
 
-        log.info(">>>>准备开始订阅主题,当前线程:{}", Thread.currentThread().getName());
-        if (Objects.isNull(topics) || topics.isEmpty()) {
-            log.warn("消费主题为空,不进行消费");
-            throw new RuntimeException("消费主题不能为空");
-        }
+        if (this.lock.tryLock()) {
+            try {
+                log.info(">>>>准备开始订阅主题,当前线程:{}", Thread.currentThread().getName());
+                if (Objects.isNull(topics) || topics.isEmpty()) {
+                    log.warn("消费主题为空,不进行消费");
+                    throw new RuntimeException("消费主题不能为空");
+                }
 
-        // 校验是否已经在跑了
-        if (Objects.nonNull(this.cosumerThread) && !this.cosumerThread.isInterrupted()) {
-            log.warn("当前消费者正在消费,需要先停止消费...");
-            throw new RuntimeException("当前消费者正在消费,需要先停止消费...");
+                // 校验是否已经在跑了
+                if (Objects.nonNull(this.cosumerThread) && !this.cosumerThread.isInterrupted()) {
+                    log.warn("当前消费者正在消费,需要先停止消费...");
+                    throw new RuntimeException("当前消费者正在消费,需要先停止消费...");
+                }
+                this.topics = topics;
+                // 获取一个新线程
+                this.cosumerThread = this.consumerThreadSupplier.get();
+                // 开启消费线程开始消费
+                this.cosumerThread.start();
+                log.info(">>>>开始准备消费者...本次订阅的主题为:{}",topics);
+            } finally {
+                this.lock.unlock();
+            }
+        } else {
+            log.warn("!!!!!当前有其他线程正在操作,无法进行订阅...");
         }
-        this.topics = topics;
-        // 获取一个新线程
-        this.cosumerThread = this.consumerThreadSupplier.get();
-        // 开启消费线程开始消费
-        this.cosumerThread.start();
-        log.info(">>>>开始准备消费者...本次订阅的主题为:{}",topics);
     }
 
     /**
@@ -113,6 +124,7 @@ public class ConsumerContextHolder {
             Thread.currentThread().interrupt();
             return;
         }
+
         // 在同一个线程完成订阅和消费
         this.consumer.subscribe(this.topics);
         log.info(">>>>开始执行消费者消费线程,当前线程：{}", Thread.currentThread().getName());
