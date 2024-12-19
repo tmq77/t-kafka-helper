@@ -86,27 +86,24 @@ public class ConsumerContextHolder {
     /**
      * 取消订阅
      */
-    public Future<Boolean> unsubscribe() {
+    public synchronized boolean unsubscribe() {
         if (!this.running) {
             // 没启动的则直接认为成功
-            return CompletableFuture.completedFuture(true);
+            return true;
         }
         // 打断线程
         log.warn(">>>>取消订阅,消费者即将终止");
         this.cosumerThread.interrupt();
-        // 返回一个异步状态 - 当其停止后才可以继续创建监听
-        return CompletableFuture.supplyAsync(() -> {
-            // 取消订阅 - 消费者线程不安全,需要在同一线程中取消
-            // this.consumer.unsubscribe();
-            this.running = false;
-            // 在这里延时一下,避免线程未完全停止就创建新的线程导致异常
-            try {
-                TimeUnit.SECONDS.sleep(5);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            return true;
-        }, this.sdkThreadPool.getPool());
+        // 取消订阅 - 消费者线程不安全,需要在同一线程中取消
+        // this.consumer.unsubscribe();
+        this.running = false;
+        // 在这里延时一下,避免线程未完全停止就创建新的线程导致异常
+        try {
+            TimeUnit.SECONDS.sleep(5);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return true;
     }
 
     /**
