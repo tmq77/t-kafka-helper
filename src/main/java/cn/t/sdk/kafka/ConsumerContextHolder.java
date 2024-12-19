@@ -31,6 +31,8 @@ public class ConsumerContextHolder {
     // 业务方法
     private final java.util.function.Consumer<List<MessageDto>> bizConsumer;
 
+    private final Object lock = new Object();
+
     /**
      * 创建一个单一kafka集群的消费者持有者 - 一个holder就一个消费者
      * @param servers kafka集群地址,逗号分隔
@@ -55,55 +57,52 @@ public class ConsumerContextHolder {
      * 创建消费者并订阅主题 - 不允许并发
      * @param topics 主题列表
      */
-    public synchronized void subscribe(Set<String> topics) {
-        log.info(">>>>准备开始订阅主题,当前线程:{}", Thread.currentThread().getName());
-        if (Objects.isNull(topics) || topics.isEmpty()) {
-            log.warn("消费主题为空,不进行消费");
-            return;
+    public void subscribe(Set<String> topics) {
+        synchronized (this.lock) {
+            log.info(">>>>准备开始订阅主题,当前线程:{}", Thread.currentThread().getName());
+            if (Objects.isNull(topics) || topics.isEmpty()) {
+                log.warn("消费主题为空,不进行消费");
+                return;
+            }
+            if (Objects.nonNull(this.cosumerThread)
+                    && (Thread.State.NEW.equals(this.cosumerThread.getState())
+                    || Thread.State.RUNNABLE.equals(this.cosumerThread.getState()))) {
+                log.warn(">>>>并发!!已在创建线程中!!");
+                return;
+            }
+            // 获取一个新线程
+            this.cosumerThread = this.consumerThreadSupplier.get();
+            this.consumer.subscribe(topics);
+            // 开启消费线程开始消费
+            this.cosumerThread.start();
+            log.info(">>>>开始准备消费者...本次订阅的主题为:{},当前线程:{}",topics, Thread.currentThread().getName());
         }
-        if (Objects.nonNull(this.cosumerThread)
-                && (Thread.State.NEW.equals(this.cosumerThread.getState())
-                || Thread.State.RUNNABLE.equals(this.cosumerThread.getState()))) {
-            log.warn(">>>>并发!!已在创建线程中!!");
-            return;
-        }
-        // 获取一个新线程
-        this.cosumerThread = this.consumerThreadSupplier.get();
-        this.consumer.subscribe(topics);
-        // 开启消费线程开始消费
-        this.cosumerThread.start();
-        log.info(">>>>开始准备消费者...本次订阅的主题为:{},当前线程:{}",topics, Thread.currentThread().getName());
     }
 
     /**
      * 取消订阅
      */
-    public synchronized void unsubscribe() {
+    public void unsubscribe() {
         if (Objects.isNull(this.cosumerThread)) {
             // 没启动的/打断的则直接认为成功
             return;
         }
-
-        // 终止了
-        if (!Thread.State.TERMINATED.equals(this.cosumerThread.getState())) {
-            this.cosumerThread.interrupt();
-            // 打断线程
-            log.warn(">>>>取消订阅,消费者即将终止");
-        } else {
-            log.warn(">>>>消费者已终止,忽略");
-        }
-        // 这里立即设置为false,执行完后线程会立即结束
-        // 取消订阅 - 消费者线程不安全,需要在同一线程中取消
-        // this.consumer.unsubscribe();
-        // 在这里延时一下,避免线程未完全停止就创建新的线程导致异常
-
-        try {
-            // 等待线程完全结束
-            this.cosumerThread.join();
-            this.consumer.unsubscribe();
-            log.warn("!!!>>>>消费者线程已完全结束");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        synchronized (this.lock) {
+            if (!this.cosumerThread.isInterrupted()) {
+                this.cosumerThread.interrupt();
+                // 打断线程
+                log.warn(">>>>取消订阅,消费者即将终止");
+            }
+            // 这里立即设置为false,执行完后线程会立即结束
+            // 取消订阅 - 消费者线程不安全,需要在同一线程中取消
+            try {
+                // 等待线程完全结束
+                this.cosumerThread.join();
+                this.consumer.unsubscribe();
+                log.warn("!!!>>>>消费者线程已完全结束");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
