@@ -161,8 +161,12 @@ public class ConsumerContextHolder {
             log.warn(">>>>消费者已停止消费,当前线程:{}", Thread.currentThread().getName());
         } finally {
             // 操作consumer需要在同一个线程中 - 取消订阅的时候可能也在poll，所以要保证串行
-            this.consumer.unsubscribe();
-            log.warn(">>>>消费者已停止监听主题,当前线程:{}", Thread.currentThread().getName());
+            try {
+                this.consumer.unsubscribe();
+                log.warn(">>>>消费者已停止监听主题,当前线程:{}", Thread.currentThread().getName());
+            } catch (Exception e) {
+                log.error(">>>>消费者停止监听主题异常", e);
+            }
         }
     }
 
