@@ -2,7 +2,6 @@ package cn.t.sdk.kafka;
 
 import cn.t.sdk.kafka.config.KafkaDynamicTopicConsumerFactory;
 import cn.t.sdk.kafka.data.MessageDto;
-import cn.t.sdk.kafka.pool.SdkThreadPool;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -25,6 +24,7 @@ import java.util.function.Supplier;
 @Slf4j
 public class ConsumerContextHolder {
 
+    private volatile boolean running;
     // 持有一个消费者
     private final Consumer<String, String> consumer;
     // 持有一个消费者线程
@@ -34,11 +34,9 @@ public class ConsumerContextHolder {
     // 业务方法
     private final java.util.function.Consumer<List<MessageDto>> bizConsumer;
 
-    private final SdkThreadPool sdkThreadPool = new SdkThreadPool();
-
     private Set<String> topics;
 
-    private final ReentrantLock lock = new ReentrantLock();
+    private final ReentrantLock lock  = new ReentrantLock();
 
     /**
      * 创建一个单一kafka集群的消费者持有者 - 一个holder就一个消费者
@@ -64,40 +62,31 @@ public class ConsumerContextHolder {
      * 创建消费者并订阅主题 - 不允许并发
      * @param topics 主题列表
      */
-    public void subscribe(Set<String> topics) {
-
-        if (this.lock.tryLock()) {
-            try {
-                log.info(">>>>准备开始订阅主题,当前线程:{}", Thread.currentThread().getName());
-                if (Objects.isNull(topics) || topics.isEmpty()) {
-                    log.warn("消费主题为空,不进行消费");
-                    throw new RuntimeException("消费主题不能为空");
-                }
-
-                // 校验是否已经在跑了
-                if (Objects.nonNull(this.cosumerThread) && !this.cosumerThread.isInterrupted()) {
-                    log.warn("当前消费者正在消费,需要先停止消费...");
-                    throw new RuntimeException("当前消费者正在消费,需要先停止消费...");
-                }
-                this.topics = topics;
-                // 获取一个新线程
-                this.cosumerThread = this.consumerThreadSupplier.get();
-                // 开启消费线程开始消费
-                this.cosumerThread.start();
-                log.info(">>>>开始准备消费者...本次订阅的主题为:{}",topics);
-            } finally {
-                this.lock.unlock();
-            }
-        } else {
-            log.warn("!!!!!当前有其他线程正在操作,无法进行订阅...");
+    public synchronized void subscribe(Set<String> topics) {
+        log.info(">>>>准备开始订阅主题,当前线程:{}", Thread.currentThread().getName());
+        if (Objects.isNull(topics) || topics.isEmpty()) {
+            log.warn("消费主题为空,不进行消费");
+            return;
         }
+        if (this.running) {
+            log.warn(">>>>并发!!已在创建线程中!!");
+            return;
+        }
+        this.topics = topics;
+        // 获取一个新线程
+        this.cosumerThread = this.consumerThreadSupplier.get();
+        this.consumer.subscribe(this.topics);
+        this.running = true;
+        // 开启消费线程开始消费
+        this.cosumerThread.start();
+        log.info(">>>>开始准备消费者...本次订阅的主题为:{}",topics);
     }
 
     /**
      * 取消订阅
      */
     public synchronized void unsubscribe() {
-        if (Objects.isNull(this.cosumerThread) || this.cosumerThread.isInterrupted()) {
+        if (!this.running) {
             // 没启动的/打断的则直接认为成功
             return;
         }
@@ -116,7 +105,7 @@ public class ConsumerContextHolder {
     }
 
     /**
-     * 执行线程消费
+     * 执行线程消费 - 保证整个消费者在一个线程里面
      */
     private void executeThread() {
         if (Objects.isNull(this.topics) || this.topics.isEmpty()) {
@@ -125,10 +114,8 @@ public class ConsumerContextHolder {
             return;
         }
 
-        // 在同一个线程完成订阅和消费
-        this.consumer.subscribe(this.topics);
         log.info(">>>>开始执行消费者消费线程,当前线程：{}", Thread.currentThread().getName());
-        // 不使用使用sleep之类的方法时, InterruptedException异常被捕获时不会复位,
+        // 不使用sleep之类的方法时, InterruptedException异常被捕获时不会复位,
         while (!Thread.currentThread().isInterrupted()) {
             // 减少CPU占用
             try {
@@ -160,8 +147,10 @@ public class ConsumerContextHolder {
                 Thread.currentThread().interrupt();
             }
         }
-        // 操作consumer需要在同一个线程中
+        // 操作consumer需要在同一个线程中 - 取消订阅的时候可能也在poll，所以要保证串行
         this.consumer.unsubscribe();
+        // 外部无论打断做少次,running只会在这里重置
+        this.running = false;
         log.warn(">>>>消费者已停止消费,当前线程:{}", Thread.currentThread().getName());
     }
 
