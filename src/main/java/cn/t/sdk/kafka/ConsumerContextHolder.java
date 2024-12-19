@@ -65,8 +65,7 @@ public class ConsumerContextHolder {
                 return;
             }
             if (Objects.nonNull(this.cosumerThread)
-                    && (Thread.State.NEW.equals(this.cosumerThread.getState())
-                    || Thread.State.RUNNABLE.equals(this.cosumerThread.getState()))) {
+                    && this.cosumerThread.isAlive()) {
                 log.warn(">>>>并发!!已在创建线程中!!");
                 return;
             }
@@ -83,7 +82,7 @@ public class ConsumerContextHolder {
      * 取消订阅
      */
     public void unsubscribe() {
-        if (Objects.isNull(this.cosumerThread)) {
+        if (Objects.isNull(this.cosumerThread) || !this.cosumerThread.isAlive()) {
             // 没启动的/打断的则直接认为成功
             return;
         }
@@ -141,7 +140,9 @@ public class ConsumerContextHolder {
 
                 if (!records.isEmpty()) {
                     // 异步提交
-                    this.consumer.commitAsync();
+                    // this.consumer.commitAsync();
+                    // 同步
+                    this.consumer.commitSync();
                 }
             }
             // 外部无论打断做少次,running只会在这里重置
