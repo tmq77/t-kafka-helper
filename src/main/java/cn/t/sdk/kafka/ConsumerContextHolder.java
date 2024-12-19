@@ -24,7 +24,6 @@ import java.util.function.Supplier;
 @Slf4j
 public class ConsumerContextHolder {
 
-    private volatile boolean running;
     // 持有一个消费者
     private final Consumer<String, String> consumer;
     // 持有一个消费者线程
@@ -68,7 +67,9 @@ public class ConsumerContextHolder {
             log.warn("消费主题为空,不进行消费");
             return;
         }
-        if (this.running) {
+        if (Objects.nonNull(this.cosumerThread)
+                && (Thread.State.NEW.equals(this.cosumerThread.getState())
+                || Thread.State.RUNNABLE.equals(this.cosumerThread.getState()))) {
             log.warn(">>>>并发!!已在创建线程中!!");
             return;
         }
@@ -76,23 +77,28 @@ public class ConsumerContextHolder {
         // 获取一个新线程
         this.cosumerThread = this.consumerThreadSupplier.get();
         this.consumer.subscribe(this.topics);
-        this.running = true;
         // 开启消费线程开始消费
         this.cosumerThread.start();
-        log.info(">>>>开始准备消费者...本次订阅的主题为:{}",topics);
+        log.info(">>>>开始准备消费者...本次订阅的主题为:{},当前线程:{}",topics, Thread.currentThread().getName());
     }
 
     /**
      * 取消订阅
      */
     public synchronized void unsubscribe() {
-        if (!this.running) {
+        if (Objects.isNull(this.cosumerThread)) {
             // 没启动的/打断的则直接认为成功
             return;
         }
-        // 打断线程
-        log.warn(">>>>取消订阅,消费者即将终止");
-        this.cosumerThread.interrupt();
+
+        // 终止了
+        if (!Thread.State.TERMINATED.equals(this.cosumerThread.getState())) {
+            this.cosumerThread.interrupt();
+            // 打断线程
+            log.warn(">>>>取消订阅,消费者即将终止");
+        } else {
+            log.warn(">>>>消费者已终止,忽略");
+        }
         // 这里立即设置为false,执行完后线程会立即结束
         // 取消订阅 - 消费者线程不安全,需要在同一线程中取消
         // this.consumer.unsubscribe();
@@ -108,50 +114,55 @@ public class ConsumerContextHolder {
      * 执行线程消费 - 保证整个消费者在一个线程里面
      */
     private void executeThread() {
-        if (Objects.isNull(this.topics) || this.topics.isEmpty()) {
-            log.warn("消费主题为空,不进行消费");
-            Thread.currentThread().interrupt();
-            return;
-        }
 
-        log.info(">>>>开始执行消费者消费线程,当前线程：{}", Thread.currentThread().getName());
-        // 不使用sleep之类的方法时, InterruptedException异常被捕获时不会复位,
-        while (!Thread.currentThread().isInterrupted()) {
-            // 减少CPU占用
-            try {
-                TimeUnit.MILLISECONDS.sleep(1000);
-                ConsumerRecords<String, String> records = this.consumer.poll(Duration.ofMillis(1500));
-
-                if (records.isEmpty()) {
-                    continue;
-                }
-
-                List<MessageDto> messageList = new ArrayList<>();
-                for (ConsumerRecord<String, String> msgRecord : records) {
-                    messageList.add(new MessageDto(msgRecord.key(), msgRecord.value(), msgRecord.topic(), msgRecord.offset(), msgRecord.headers()));
-                }
-                try {
-                    // 批量消费
-                    this.bizConsumer.accept(messageList);
-                } catch (Exception e) {
-                    log.error("消费消息处理异常", e);
-                }
-
-                if (!records.isEmpty()) {
-                    // 异步提交
-                    this.consumer.commitAsync();
-                }
-
-            } catch (InterruptedException e) {
-                // 重置线程中断状态
+        try {
+            if (Objects.isNull(this.topics) || this.topics.isEmpty()) {
+                log.warn("消费主题为空,不进行消费");
                 Thread.currentThread().interrupt();
+                return;
             }
+
+            log.info(">>>>开始执行消费者消费线程,当前线程：{}", Thread.currentThread().getName());
+            // 不使用sleep之类的方法时, InterruptedException异常被捕获时不会复位,
+            while (!Thread.currentThread().isInterrupted()) {
+                // 减少CPU占用
+                try {
+                    TimeUnit.MILLISECONDS.sleep(1000);
+                    ConsumerRecords<String, String> records = this.consumer.poll(Duration.ofMillis(1500));
+
+                    if (records.isEmpty()) {
+                        continue;
+                    }
+
+                    List<MessageDto> messageList = new ArrayList<>();
+                    for (ConsumerRecord<String, String> msgRecord : records) {
+                        messageList.add(new MessageDto(msgRecord.key(), msgRecord.value(), msgRecord.topic(), msgRecord.offset(), msgRecord.headers()));
+                    }
+                    try {
+                        // 批量消费
+                        this.bizConsumer.accept(messageList);
+                    } catch (Exception e) {
+                        log.error("消费消息处理异常", e);
+                    }
+
+                    if (!records.isEmpty()) {
+                        // 异步提交
+                        this.consumer.commitAsync();
+                    }
+
+                } catch (InterruptedException e) {
+                    // 重置线程中断状态
+                    Thread.currentThread().interrupt();
+                }
+            }
+            // 操作consumer需要在同一个线程中 - 取消订阅的时候可能也在poll，所以要保证串行
+            this.consumer.unsubscribe();
+            // 外部无论打断做少次,running只会在这里重置
+            log.warn(">>>>消费者已停止消费,当前线程:{}", Thread.currentThread().getName());
+        } finally {
+            // 操作consumer需要在同一个线程中 - 取消订阅的时候可能也在poll，所以要保证串行
+            this.consumer.unsubscribe();
         }
-        // 操作consumer需要在同一个线程中 - 取消订阅的时候可能也在poll，所以要保证串行
-        this.consumer.unsubscribe();
-        // 外部无论打断做少次,running只会在这里重置
-        this.running = false;
-        log.warn(">>>>消费者已停止消费,当前线程:{}", Thread.currentThread().getName());
     }
 
 
