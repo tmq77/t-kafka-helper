@@ -97,7 +97,7 @@ public class ConsumerContextHolder {
         // 返回一个异步状态 - 当其停止后才可以继续创建监听
         return CompletableFuture.supplyAsync(() -> {
             // 取消订阅 - 消费者线程不安全,需要在同一线程中取消
-            this.consumer.unsubscribe();
+            // this.consumer.unsubscribe();
             this.running = false;
             // 在这里延时一下,避免线程未完全停止就创建新的线程导致异常
             try {
@@ -154,6 +154,8 @@ public class ConsumerContextHolder {
                 Thread.currentThread().interrupt();
             }
         }
+        // 操作consumer需要在同一个线程中
+        this.consumer.unsubscribe();
         log.warn(">>>>消费者已停止消费");
     }
 
