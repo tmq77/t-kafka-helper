@@ -26,6 +26,8 @@ public class KafkaDynamicTopicConsumerFactory {
     private String saslUsername;
     private String saslPassword;
 
+    private boolean latest;
+
     /**
      * 指定服务地址和消费者组
      * @param servers 服务地址 localhost:9092  多个则逗号分隔
@@ -51,7 +53,7 @@ public class KafkaDynamicTopicConsumerFactory {
     /**
      * 初始化kafka配置 - 固定的一些配置
      */
-    private Properties fixedProperties() {
+    private Properties fixedProperties(boolean latest) {
         // 参考 https://kafka.apache.org/documentation/#consumerconfigs
         final Properties props = new Properties();
         // 服务器地址
@@ -68,7 +70,11 @@ public class KafkaDynamicTopicConsumerFactory {
         props.put(ConsumerConfig.GROUP_ID_CONFIG, this.groupId);
         // earliest 从最开始的位置开始消费
         // latest 从最新的位置开始消费
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.toString().toLowerCase());
+        if (latest) {
+            props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.LATEST.toString().toLowerCase());
+        } else {
+            props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.toString().toLowerCase());
+        }
 
         if (Objects.nonNull(this.saslUsername) && !this.saslUsername.isBlank() && Objects.nonNull(this.saslPassword) && !this.saslPassword.isBlank()) {
             // 配置 SASL/PLAIN 认证
@@ -97,8 +103,8 @@ public class KafkaDynamicTopicConsumerFactory {
      * 默认1秒拉取一次<br/>
      * @return 新的kafka消费者
      */
-    public Consumer<String, String> buildNewConsumer() {
-        Properties fixedProps = this.fixedProperties();
+    public Consumer<String, String> buildNewConsumer(boolean latest) {
+        Properties fixedProps = this.fixedProperties(latest);
         // 创建消费者
         return new KafkaConsumer<>(fixedProps);
     }
