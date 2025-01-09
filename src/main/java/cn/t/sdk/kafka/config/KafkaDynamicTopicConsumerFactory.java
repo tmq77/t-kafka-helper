@@ -65,6 +65,8 @@ public class KafkaDynamicTopicConsumerFactory {
         props.put(ConsumerConfig.FETCH_MAX_BYTES_CONFIG, 5242880);
         // 最大拉去的数据条数 - 默认500
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 50);
+        // 默认超时时间毫秒配置
+        props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 660000);
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         // 消费者id
         props.put(ConsumerConfig.GROUP_ID_CONFIG, this.groupId);
